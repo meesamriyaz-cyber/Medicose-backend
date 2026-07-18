@@ -14,10 +14,10 @@ const orderSchema = new mongoose.Schema(
 
     totalAmount: { type: Number, required: true, min: 0 },
 
-    // Razorpay details
-    razorpayOrderId: { type: String, required: true },
-    razorpayPaymentId: { type: String, required: true }, // required after success
-    razorpaySignature: { type: String, required: true }, // for verification
+    // Razorpay details (optional - local/direct orders won't have these)
+    razorpayOrderId: { type: String },
+    razorpayPaymentId: { type: String },
+    razorpaySignature: { type: String },
 
     paymentStatus: {
       type: String,
@@ -27,7 +27,7 @@ const orderSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "processing", "shipped", "delivered", "cancelled"],
+      enum: ["pending", "processing", "shipped", "delivered", "completed", "cancelled"],
       default: "pending"
     },
 

@@ -171,7 +171,7 @@ export const updateOrderStatus = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Order not found" });
 
-    // If status changed to cancelled and wasn't cancelled before, restore stock
+    // If status changed to cancelled and wasn't cancelled before, restore stock (atomic $inc)
     if (status === "cancelled" && previousStatus !== "cancelled") {
       console.log(
         `[ORDER_CANCELLED] Restoring stock for cancelled order ${order._id}`
@@ -179,21 +179,20 @@ export const updateOrderStatus = async (req, res) => {
 
       for (const item of order.orderItems) {
         try {
-          const product = await Product.findById(item.product);
-          if (!product) {
+          const updated = await Product.findByIdAndUpdate(
+            item.product,
+            { $inc: { stock: item.quantity } },
+            { new: true, select: "name stock" }
+          );
+          if (!updated) {
             console.error(
               `[STOCK_RESTORE] Product ${item.product} not found for order ${order._id}`
             );
-            continue;
+          } else {
+            console.log(
+              `[STOCK_RESTORE] ${updated.name}: stock increased by ${item.quantity} to ${updated.stock} (Order: ${order._id})`
+            );
           }
-
-          const oldStock = product.stock;
-          product.stock += item.quantity; // Add back the quantity
-          await product.save();
-
-          console.log(
-            `[STOCK_RESTORE] ${product.name}: stock increased from ${oldStock} to ${product.stock} (Order: ${order._id})`
-          );
         } catch (error) {
           console.error(
             `[STOCK_RESTORE] Failed to restore stock for product ${item.product} in order ${order._id}:`,

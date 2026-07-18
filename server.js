@@ -17,6 +17,7 @@ import analyticsRoutes from "./routes/analyticsRoute.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import prescriptionRoutes from "./routes/prescriptionRoute.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
+import saleRoutes from "./routes/saleRoutes.js";
 
 import { fileURLToPath } from "url";
 import { dirname } from "path";
@@ -154,6 +155,7 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/prescriptions", prescriptionRoutes);
 app.use("/api/categories", categoryRoutes);
+app.use("/api/sales", saleRoutes);
 
 // Serve static files from frontend build
 app.use(express.static(path.join(__dirname, "../frontend/dist")));

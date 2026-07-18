@@ -413,63 +413,46 @@ export const decreaseStock = async (req, res) => {
     console.log(
       `[DECREASE_STOCK] Request received for product ${id} with quantity ${quantity}`
     );
-    console.log(`[DECREASE_STOCK] Request URL: ${req.originalUrl}`);
-    console.log(`[DECREASE_STOCK] Request method: ${req.method}`);
 
     if (!quantity || quantity < 0) {
-      console.log(`[DECREASE_STOCK] Invalid quantity: ${quantity}`);
       return res.status(400).json({
         error: "Invalid quantity",
         message: "Quantity must be a positive number",
       });
     }
 
-    const product = await Product.findById(id);
-    console.log(
-      `[DECREASE_STOCK] Product found:`,
-      product ? `${product.name} (stock: ${product.stock})` : "NOT FOUND"
+    // Atomic stock decrease — no race condition, no NaN propagation
+    const product = await Product.findOneAndUpdate(
+      { _id: id, stock: { $gte: quantity } },
+      { $inc: { stock: -quantity } },
+      { new: true, select: "name stock price" }
     );
 
     if (!product) {
-      console.log(`[DECREASE_STOCK] Product ${id} not found in database`);
-      return res.status(404).json({
-        error: "Product not found",
-        message: "The product to update stock for does not exist",
-      });
-    }
-
-    // Check if there's enough stock
-    if (product.stock < quantity) {
-      console.log(
-        `[DECREASE_STOCK] Insufficient stock: have ${product.stock}, need ${quantity}`
-      );
+      // Check if product exists at all vs insufficient stock
+      const exists = await Product.findById(id).select("name stock");
+      if (!exists) {
+        return res.status(404).json({
+          error: "Product not found",
+          message: "The product to update stock for does not exist",
+        });
+      }
       return res.status(400).json({
         error: "Insufficient stock",
-        message: `Only ${product.stock} items available, but trying to decrease by ${quantity}`,
-        availableStock: product.stock,
+        message: `Only ${exists.stock} items available, but trying to decrease by ${quantity}`,
+        availableStock: exists.stock,
       });
     }
 
-    // Decrease the stock
-    const oldStock = product.stock;
-    product.stock -= quantity;
-    await product.save();
-
     console.log(
-      `[DECREASE_STOCK] SUCCESS: ${product.name} stock decreased from ${oldStock} to ${product.stock} (decreased by ${quantity})`
+      `[DECREASE_STOCK] SUCCESS: ${product.name} stock decreased by ${quantity} to ${product.stock}`
     );
 
     res.status(200).json({
       message: "Stock decreased successfully",
-      product: {
-        _id: product._id,
-        name: product.name,
-        stock: product.stock,
-        price: product.price,
-      },
+      product,
       decreasedBy: quantity,
       newStock: product.stock,
-      oldStock: oldStock,
     });
   } catch (error) {
     console.error("[DECREASE_STOCK] Error:", error);

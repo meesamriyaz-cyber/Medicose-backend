@@ -203,30 +203,30 @@ export const verifyPayment = async (req, res) => {
       status: "processing",
     });
 
-    // Update stock for each ordered item
+    // Update stock for each ordered item (atomic $inc — no race condition)
     for (const item of normalizedItems) {
       try {
-        const product = await Product.findById(item.product);
-        if (!product) {
-          console.error(
-            `[STOCK_UPDATE] Product ${item.product} not found for order ${order._id}`
-          );
-          continue;
-        }
-
-        if (product.stock < item.quantity) {
-          console.warn(
-            `[STOCK_UPDATE] Insufficient stock for ${product.name}: requested ${item.quantity}, available ${product.stock} (Order: ${order._id})`
-          );
-        }
-
-        const oldStock = product.stock;
-        product.stock = Math.max(0, product.stock - item.quantity);
-        await product.save();
-
-        console.log(
-          `[STOCK_UPDATE] ${product.name}: stock decreased from ${oldStock} to ${product.stock} (Order: ${order._id})`
+        const updated = await Product.findOneAndUpdate(
+          { _id: item.product, stock: { $gte: item.quantity } },
+          { $inc: { stock: -item.quantity } },
+          { new: true, select: "name stock" }
         );
+        if (!updated) {
+          const product = await Product.findById(item.product).select("name stock");
+          if (!product) {
+            console.error(
+              `[STOCK_UPDATE] Product ${item.product} not found for order ${order._id}`
+            );
+          } else {
+            console.warn(
+              `[STOCK_UPDATE] Insufficient stock for ${product.name}: requested ${item.quantity}, available ${product.stock} (Order: ${order._id})`
+            );
+          }
+        } else {
+          console.log(
+            `[STOCK_UPDATE] ${updated.name}: stock decreased by ${item.quantity} to ${updated.stock} (Order: ${order._id})`
+          );
+        }
       } catch (error) {
         console.error(
           `[STOCK_UPDATE] Failed to update stock for product ${item.product} in order ${order._id}:`,
