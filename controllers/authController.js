@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import redis from "../lib/redis.js";
 import { set } from "mongoose";
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const getAccessToken = (req) => {
   if (req.cookies?.access_token) return req.cookies.access_token;

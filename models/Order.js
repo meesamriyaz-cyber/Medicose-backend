@@ -45,7 +45,10 @@ const orderSchema = new mongoose.Schema(
       code: String,
       discountPercentage: Number,
       discountAmount: Number
-    }
+    },
+
+    customerName: { type: String },
+    customerPhone: { type: String }
   },
   { timestamps: true }
 );

@@ -31,9 +31,6 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // log origin for debugging
-    console.log("[CORS] origin:", origin);
-
     // allow null / mobile / Postman
     if (!origin || origin === "null") {
       return callback(null, true);
@@ -44,11 +41,6 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    // Don't throw — allow but log unexpected origins (helps debugging)
-    console.warn(
-      "[CORS] Origin not in allowed list, allowing for now:",
-      origin
-    );
     return callback(null, true);
   },
   credentials: true,

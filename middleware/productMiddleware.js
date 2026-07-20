@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import User from "../models/User.js";
-dotenv.config();
+dotenv.config({ quiet: true });
 export const protectedRoute = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;

@@ -28,7 +28,7 @@ const __dirname = dirname(__filename);
 import connectDB from "./config/db.js";
 import corsOptions from "./config/corsOptions.js";
 
-dotenv.config({ path: path.resolve(__dirname, "./.env.local") });
+dotenv.config({ path: path.resolve(__dirname, "./.env.local"), quiet: true });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -36,10 +36,6 @@ const FORCE_HTTPS = process.env.FORCE_HTTPS === "true";
 const NODE_ENV = process.env.NODE_ENV || "development";
 
 const shouldLogMobileTraffic = process.env.LOG_MOBILE_TRAFFIC === "true";
-app.use((req, res, next) => {
-  console.log(`[req] ${req.method} ${req.url} origin=${req.headers.origin}`);
-  next();
-});
 connectDB();
 
 // Drop old index if exists
@@ -50,51 +46,18 @@ mongoose.connection.once("open", async () => {
     const hasUserIDIndex = indexes.some((idx) => idx.name === "userID_1");
     if (hasUserIDIndex) {
       await collection.dropIndex("userID_1");
-      console.log("Dropped old userID_1 index");
     }
   } catch (error) {
-    console.log("Error dropping index:", error.message);
+    console.error("Error dropping index:", error.message);
   }
 });
 
-app.use((req, res, next) => {
-  console.log(
-    `[${NODE_ENV}] ${req.method} ${req.url} origin=${
-      req.headers.origin || "none"
-    }`
-  );
-  next();
-});
 app.use(cors(corsOptions));
 
 app.use(cookieParser());
 
 if (shouldLogMobileTraffic) {
   app.use((req, res, next) => {
-    const origin = req.get("origin") || "null";
-    const host = req.get("host") || "unknown";
-    const ua = req.get("user-agent") || "unknown";
-    const start = Date.now();
-
-    console.info("[mobile-debug][req]", {
-      method: req.method,
-      url: req.originalUrl,
-      origin,
-      host,
-      ip: req.ip,
-      cookies: Object.keys(req.cookies || {}),
-      ua,
-    });
-
-    res.on("finish", () => {
-      console.info("[mobile-debug][res]", {
-        method: req.method,
-        url: req.originalUrl,
-        status: res.statusCode,
-        durationMs: Date.now() - start,
-      });
-    });
-
     next();
   });
 }
@@ -125,11 +88,6 @@ app.use((req, res, next) => {
   }
 
   res.setTimeout(timeout, () => {
-    console.warn(
-      `Request timeout for ${req.method} ${req.path} - Device: ${
-        isMobile ? "Mobile" : "Desktop"
-      }, Timeout: ${timeout}ms`
-    );
     res.status(408).json({
       error: "Request Timeout",
       message: `Request took too long to process${
@@ -175,11 +133,8 @@ if (NODE_ENV === "development" && FORCE_HTTPS === "true") {
   };
 
   https.createServer(sslOptions, app).listen(PORT, "0.0.0.0", () => {
-    console.log(`✅ Local HTTPS server running on https://localhost:${PORT}`);
   });
 } else {
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
-    console.log(`✅ Environment: ${NODE_ENV}`);
   });
 }

@@ -14,7 +14,7 @@ import { createOrder } from "../lib/orderService.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-dotenv.config({ path: path.resolve(__dirname, "../.env.local") });
+dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true });
 
 // ✅ Create Razorpay Order
 export const createCheckoutSession = async (req, res) => {
@@ -82,6 +82,8 @@ export const verifyPayment = async (req, res) => {
       totalAmount,
       couponApplied,
       shippingAddress,
+      customerName,
+      customerPhone,
     } = req.body;
 
     if (!payment_id || !order_id || !signature) {
@@ -198,6 +200,8 @@ export const verifyPayment = async (req, res) => {
       razorpayPaymentId: payment_id,
       razorpaySignature: signature,
       shippingAddress: finalShipping,
+      customerName: customerName || "",
+      customerPhone: customerPhone || "",
       couponApplied: couponApplied || null,
       paymentStatus: "paid",
       status: "processing",
@@ -217,15 +221,8 @@ export const verifyPayment = async (req, res) => {
             console.error(
               `[STOCK_UPDATE] Product ${item.product} not found for order ${order._id}`
             );
-          } else {
-            console.warn(
-              `[STOCK_UPDATE] Insufficient stock for ${product.name}: requested ${item.quantity}, available ${product.stock} (Order: ${order._id})`
-            );
           }
         } else {
-          console.log(
-            `[STOCK_UPDATE] ${updated.name}: stock decreased by ${item.quantity} to ${updated.stock} (Order: ${order._id})`
-          );
         }
       } catch (error) {
         console.error(
@@ -277,3 +274,5 @@ async function createNewCoupon(userId) {
 
   return newCoupon;
 }
+
+

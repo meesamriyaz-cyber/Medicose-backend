@@ -25,16 +25,12 @@ const __dirname = dirname(__filename);
 import connectDB from "./config/db.js";
 import corsOptions from "./config/corsOptions.js";
 
-dotenv.config({ path: path.resolve(__dirname, ".env.local") });
+dotenv.config({ path: path.resolve(__dirname, ".env.local"), quiet: true });
 
 const app = express();
 
 const PORT = process.env.PORT || 5000;
 const shouldLogMobileTraffic = process.env.LOG_MOBILE_TRAFFIC === "true";
-app.use((req, res, next) => {
-  console.log(`[req] ${req.method} ${req.url} origin=${req.headers.origin}`);
-  next();
-});
 connectDB();
 app.use(cors(corsOptions));
 
@@ -68,30 +64,6 @@ app.use(cookieParser());
 
 if (shouldLogMobileTraffic) {
   app.use((req, res, next) => {
-    const origin = req.get("origin") || "null";
-    const host = req.get("host") || "unknown";
-    const ua = req.get("user-agent") || "unknown";
-    const start = Date.now();
-
-    console.info("[mobile-debug][req]", {
-      method: req.method,
-      url: req.originalUrl,
-      origin,
-      host,
-      ip: req.ip,
-      cookies: Object.keys(req.cookies || {}),
-      ua,
-    });
-
-    res.on("finish", () => {
-      console.info("[mobile-debug][res]", {
-        method: req.method,
-        url: req.originalUrl,
-        status: res.statusCode,
-        durationMs: Date.now() - start,
-      });
-    });
-
     next();
   });
 }
@@ -127,6 +99,4 @@ const sslOptions = {
 };
 
 https.createServer(sslOptions, app).listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Secure server running on ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
 });

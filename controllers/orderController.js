@@ -15,6 +15,7 @@ export const listUserOrders = async (req, res) => {
     const skip = (page - 1) * limit;
     const [orders, total] = await Promise.all([
       Order.find(filter)
+        .populate("user", "fullName email")
         .populate("orderItems.product", "name price")
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -42,6 +43,7 @@ export const getOrderById = async (req, res) => {
   try {
     const userId = req.user?._id;
     const order = await Order.findOne({ _id: req.params.id, user: userId })
+      .populate("user", "fullName email")
       .populate("orderItems.product", "fullName price description")
       .lean();
 
@@ -173,10 +175,6 @@ export const updateOrderStatus = async (req, res) => {
 
     // If status changed to cancelled and wasn't cancelled before, restore stock (atomic $inc)
     if (status === "cancelled" && previousStatus !== "cancelled") {
-      console.log(
-        `[ORDER_CANCELLED] Restoring stock for cancelled order ${order._id}`
-      );
-
       for (const item of order.orderItems) {
         try {
           const updated = await Product.findByIdAndUpdate(
@@ -187,10 +185,6 @@ export const updateOrderStatus = async (req, res) => {
           if (!updated) {
             console.error(
               `[STOCK_RESTORE] Product ${item.product} not found for order ${order._id}`
-            );
-          } else {
-            console.log(
-              `[STOCK_RESTORE] ${updated.name}: stock increased by ${item.quantity} to ${updated.stock} (Order: ${order._id})`
             );
           }
         } catch (error) {

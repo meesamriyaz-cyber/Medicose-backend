@@ -12,7 +12,7 @@ import { generateInvoice } from "../lib/invoiceGenerator.js";
 export const createDirectSale = async (req, res) => {
   try {
     const userId = req.user?._id;
-    const { orderItems, couponApplied } = req.body;
+    const { orderItems, couponApplied, customerName, customerPhone, directDiscountPercentage } = req.body;
 
     if (!orderItems || !Array.isArray(orderItems) || orderItems.length === 0) {
       return res.status(400).json({ success: false, message: "Order items are required" });
@@ -59,7 +59,7 @@ export const createDirectSale = async (req, res) => {
       try {
         const found = await Coupon.findOne({
           code: couponApplied.code,
-          isActive: true,
+          
           userID: userId,
           expirationDate: { $gte: new Date() },
         });
@@ -68,8 +68,10 @@ export const createDirectSale = async (req, res) => {
           discountAmount = subtotal * (found.discountPercentage / 100);
         }
       } catch (err) {
-        console.warn("[SALE] Coupon validation error:", err.message);
       }
+    } else if (directDiscountPercentage && directDiscountPercentage > 0) {
+      const clamped = Math.min(100, Math.max(0, Number(directDiscountPercentage)));
+      discountAmount = subtotal * (clamped / 100);
     }
 
     computedTotal = subtotal - discountAmount;
@@ -85,13 +87,21 @@ export const createDirectSale = async (req, res) => {
       totalAmount: computedTotal,
       paymentStatus: "paid",
       status: "completed",
+      customerName: customerName || "",
+      customerPhone: customerPhone || "",
       couponApplied: validatedCoupon
         ? {
             code: validatedCoupon.code,
             discountPercentage: validatedCoupon.discountPercentage,
             discountAmount,
           }
-        : undefined,
+        : directDiscountPercentage
+          ? {
+              code: "DIRECT",
+              discountPercentage: Number(directDiscountPercentage),
+              discountAmount,
+            }
+          : undefined,
     });
 
     // Decrease stock for each item (atomic $inc — no race condition)
@@ -113,12 +123,18 @@ export const createDirectSale = async (req, res) => {
             );
           }
         } else {
-          console.log(
-            `[SALE] ${updated.name}: stock decreased by ${item.quantity} to ${updated.stock} (Order: ${order._id})`
-          );
         }
       } catch (err) {
         console.error(`[SALE] Failed to update stock for product ${item.product}:`, err);
+      }
+    }
+
+    // Mark coupon as used after successful sale
+    if (validatedCoupon) {
+      try {
+        await Coupon.findByIdAndUpdate(validatedCoupon._id, { isActive: false });
+      } catch (err) {
+        console.error(`[SALE] Failed to mark coupon ${validatedCoupon.code} as used:`, err);
       }
     }
 
@@ -291,3 +307,6 @@ export const getSaleInvoice = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to generate invoice" });
   }
 };
+
+
+

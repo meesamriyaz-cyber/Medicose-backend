@@ -2,7 +2,7 @@ import Product from "../models/Product.js";
 import redis from "../lib/redis.js";
 import cloudinary from "../lib/cloudinary.js";
 import dotenv from "dotenv";
-dotenv.config();
+dotenv.config({ quiet: true });
 
 export const getAllProducts = async (req, res) => {
   try {
@@ -41,19 +41,13 @@ export const getFeaturedProducts = async (req, res) => {
       const cachedProducts = await Promise.race([redisPromise, timeoutPromise]);
 
       if (cachedProducts) {
-        console.log("Fetching featured products from Redis cache");
         return res.status(200).json(JSON.parse(cachedProducts));
       }
     } catch (redisError) {
-      console.warn(
-        "Redis cache failed, falling back to database:",
-        redisError.message
-      );
       // Continue to database fallback
     }
 
     // Fallback to database
-    console.log("Fetching featured products from database");
     featuredProducts = await Product.find({ isFeatured: true }).lean();
 
     if (featuredProducts.length === 0) {
@@ -68,9 +62,7 @@ export const getFeaturedProducts = async (req, res) => {
         "EX",
         3600
       ); // 1 hour expiry
-      console.log("Featured products cached successfully");
     } catch (cacheError) {
-      console.warn("Failed to cache featured products:", cacheError.message);
       // Don't fail the request if caching fails
     }
 
@@ -111,10 +103,11 @@ export const getProductById = async (req, res) => {
 };
 export const addProduct = async (req, res) => {
   try {
-    const { name, description, price, category, image, stock } = req.body;
+    const { name, description, price, category, image, stock, images } = req.body;
+    const imageData = image || images?.[0]?.data;
 
     // Validate required fields
-    if (!name || !description || !price || !category || !image || !stock) {
+    if (!name || !description || !price || !category || !imageData || !stock) {
       return res.status(400).json({
         error: "Missing required fields",
         message:
@@ -123,7 +116,7 @@ export const addProduct = async (req, res) => {
     }
 
     // Validate price is a positive number
-    if (isNaN(price) || price < 0) {
+    if (price === "" || isNaN(price) || price < 0) {
       return res.status(400).json({
         error: "Invalid price",
         message: "Price must be a valid positive number",
@@ -131,27 +124,47 @@ export const addProduct = async (req, res) => {
     }
 
     // Validate stock
-    if (stock !== undefined && (isNaN(stock) || stock < 0)) {
+    if (stock === "" || isNaN(stock) || stock < 0) {
       return res.status(400).json({
         error: "Invalid stock",
         message: "Stock must be a valid non-negative number",
       });
     }
 
-    let cloudinaryResponse = null;
+    const uploadedImages = [];
     try {
-      if (image) {
-        cloudinaryResponse = await cloudinary.uploader.upload(image, {
+      const imagesToUpload = Array.isArray(images) && images.length > 0
+        ? images
+        : [{ data: imageData, isPrimary: true }];
+
+      for (let i = 0; i < imagesToUpload.length; i++) {
+        const img = imagesToUpload[i];
+        if (!img?.data) continue;
+        const cloudinaryResponse = await cloudinary.uploader.upload(img.data, {
           folder: "products",
+        });
+        uploadedImages.push({
+          url: cloudinaryResponse.secure_url,
+          public_id: cloudinaryResponse.public_id,
+          isPrimary: i === 0 || img.isPrimary,
+        });
+      }
+
+      if (uploadedImages.length === 0) {
+        return res.status(400).json({
+          error: "Image upload failed",
+          message: "Failed to upload product images",
         });
       }
     } catch (cloudinaryError) {
       console.error("Cloudinary upload error:", cloudinaryError);
       return res.status(400).json({
         error: "Image upload failed",
-        message: "Failed to upload product image",
+        message: "Failed to upload product images",
       });
     }
+
+    const primaryImage = uploadedImages.find((img) => img.isPrimary)?.url || uploadedImages[0]?.url || "";
 
     const newProduct = new Product({
       name,
@@ -159,11 +172,11 @@ export const addProduct = async (req, res) => {
       price: parseFloat(price),
       category,
       stock: stock || 0,
-      image: cloudinaryResponse?.secure_url || "",
+      image: primaryImage,
+      images: uploadedImages,
     });
 
     await newProduct.save();
-    console.log("Product saved successfully:", newProduct._id);
 
     res.status(201).json({
       message: "Product added successfully",
@@ -192,7 +205,8 @@ export const addProduct = async (req, res) => {
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, price, category, image, stock } = req.body;
+    const { name, description, price, category, image, stock, images } = req.body;
+    const imageData = image || images?.[0]?.data;
 
     // Detect if this is a mobile request (user agent check)
     const userAgent = req.get("User-Agent") || "";
@@ -200,10 +214,6 @@ export const updateProduct = async (req, res) => {
       /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
         userAgent
       );
-
-    console.log(
-      `📱 Update request from ${isMobile ? "MOBILE" : "DESKTOP"} device`
-    );
 
     // Find the existing product
     const product = await Product.findById(id);
@@ -222,38 +232,120 @@ export const updateProduct = async (req, res) => {
       });
     }
 
-    if (price !== undefined && (isNaN(price) || price < 0)) {
+    if (description !== undefined && !description.trim()) {
+      return res.status(400).json({
+        error: "Invalid description",
+        message: "Product description cannot be empty",
+      });
+    }
+
+    if (category !== undefined && !category.trim()) {
+      return res.status(400).json({
+        error: "Invalid category",
+        message: "Product category cannot be empty",
+      });
+    }
+
+    if (price !== undefined && (price === "" || isNaN(price) || price < 0)) {
       return res.status(400).json({
         error: "Invalid price",
         message: "Price must be a valid positive number",
       });
     }
 
-    if (stock !== undefined && (isNaN(stock) || stock < 0)) {
+    if (stock !== undefined && (stock === "" || isNaN(stock) || stock < 0)) {
       return res.status(400).json({
         error: "Invalid stock",
         message: "Stock must be a valid non-negative number",
       });
     }
 
-    let cloudinaryResponse = null;
-    let newImageUrl = product.image; // Keep existing image by default
+    let newImageUrl = product.image;
+    let uploadedImages = [];
+    let cloudinaryResponse;
 
-    // Handle image update if provided
-    if (image && image !== product.image) {
+    // Handle images update if provided
+    if (images && Array.isArray(images) && images.length > 0) {
       try {
-        // Delete old image from Cloudinary if it exists
-        if (product.image) {
+        // Delete old images from Cloudinary if they exist
+        if (product.images && product.images.length > 0) {
+          for (const oldImg of product.images) {
+            try {
+              if (oldImg.public_id) {
+                await cloudinary.uploader.destroy(oldImg.public_id);
+              }
+            } catch (deleteError) {
+              // ignore delete failure
+            }
+          }
+        } else if (product.image) {
           try {
             const oldPublicId = product.image.split("/").pop().split(".")[0];
             await cloudinary.uploader.destroy(
               `haleemmedicose/products/${oldPublicId}`
             );
           } catch (deleteError) {
-            console.warn(
-              "Failed to delete old image from Cloudinary:",
-              deleteError.message
+            // ignore delete failure
+          }
+        }
+
+        // Upload new images with mobile-specific options
+        const uploadOptions = {
+          folder: "products",
+          ...(isMobile && {
+            transformation: [
+              { width: 800, height: 800, crop: "limit", quality: "auto:good" },
+            ],
+          }),
+        };
+
+        for (let i = 0; i < images.length; i++) {
+          const img = images[i];
+          if (!img?.data) continue;
+          const cloudinaryResponse = await cloudinary.uploader.upload(
+            img.data,
+            uploadOptions
+          );
+          uploadedImages.push({
+            url: cloudinaryResponse.secure_url,
+            public_id: cloudinaryResponse.public_id,
+            isPrimary: i === 0 || img.isPrimary,
+          });
+        }
+
+        if (uploadedImages.length > 0) {
+          product.images = uploadedImages;
+          const primary = uploadedImages.find((img) => img.isPrimary) || uploadedImages[0];
+          product.image = primary.url;
+        }
+      } catch (cloudinaryError) {
+        console.error("Cloudinary upload error:", cloudinaryError);
+        return res.status(400).json({
+          error: "Image upload failed",
+          message: "Failed to upload product images",
+        });
+      }
+    } else if (imageData && imageData !== product.image) {
+      try {
+        // Delete old images from Cloudinary if they exist
+        if (product.images && product.images.length > 0) {
+          for (const oldImg of product.images) {
+            try {
+              if (oldImg.public_id) {
+                await cloudinary.uploader.destroy(oldImg.public_id);
+              }
+            } catch (deleteError) {
+              // ignore delete failure
+            }
+          }
+        } else if (product.image) {
+          try {
+            const oldPublicId = product.image.split("/").pop().split(".")[0];
+            await cloudinary.uploader.destroy(
+              `haleemmedicose/products/${oldPublicId}`
             );
+          } catch (deleteError) {
+            // ignore delete failure
           }
         }
 
@@ -268,16 +360,18 @@ export const updateProduct = async (req, res) => {
         };
 
         cloudinaryResponse = await cloudinary.uploader.upload(
-          image,
+          imageData,
           uploadOptions
         );
         newImageUrl = cloudinaryResponse.secure_url;
 
-        console.log(
-          `📷 Image uploaded successfully (${
-            isMobile ? "mobile optimized" : "original"
-          })`
-        );
+        product.images = [
+          {
+            url: newImageUrl,
+            public_id: cloudinaryResponse.public_id,
+            isPrimary: true,
+          },
+        ];
       } catch (cloudinaryError) {
         console.error("Cloudinary upload error:", cloudinaryError);
         return res.status(400).json({
@@ -293,15 +387,14 @@ export const updateProduct = async (req, res) => {
     if (price !== undefined) product.price = parseFloat(price);
     if (category !== undefined) product.category = category;
     if (stock !== undefined) product.stock = parseInt(stock, 10);
-    if (image !== undefined) product.image = newImageUrl;
+    if (uploadedImages.length > 0) {
+      product.image = uploadedImages.find((img) => img.isPrimary)?.url || uploadedImages[0]?.url || product.image;
+    } else if (imageData && imageData !== product.image) {
+      product.image = newImageUrl;
+    }
 
     // Save the updated product
     await product.save();
-
-    console.log(
-      `✅ Product updated successfully (${isMobile ? "mobile" : "desktop"}):`,
-      product._id
-    );
 
     res.status(200).json({
       message: `Product updated successfully${isMobile ? " on mobile" : ""}`,
@@ -368,7 +461,6 @@ export const getRecommendedProducts = async (req, res) => {
     );
 
     const products = await Promise.race([productsPromise, timeoutPromise]);
-    console.log(products);
     res.status(200).json(products);
   } catch (error) {
     console.error("Error fetching recommended products:", error);
@@ -410,10 +502,6 @@ export const decreaseStock = async (req, res) => {
     const { id } = req.params;
     const { quantity } = req.body;
 
-    console.log(
-      `[DECREASE_STOCK] Request received for product ${id} with quantity ${quantity}`
-    );
-
     if (!quantity || quantity < 0) {
       return res.status(400).json({
         error: "Invalid quantity",
@@ -444,10 +532,6 @@ export const decreaseStock = async (req, res) => {
       });
     }
 
-    console.log(
-      `[DECREASE_STOCK] SUCCESS: ${product.name} stock decreased by ${quantity} to ${product.stock}`
-    );
-
     res.status(200).json({
       message: "Stock decreased successfully",
       product,
@@ -468,7 +552,6 @@ async function updateFeaturedProductsCache() {
   try {
     const featuredProducts = await Product.find({ isFeatured: true }).lean();
     await redis.set("featured_products", JSON.stringify(featuredProducts));
-    console.log("Featured products cache updated");
   } catch (error) {
     console.error("Error updating featured products cache:", error);
   }
