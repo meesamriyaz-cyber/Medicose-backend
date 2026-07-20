@@ -6,6 +6,7 @@ const productSchema = new mongoose.Schema(
         price: { type: Number, min: 0, required: true },
         category: { type: String, required: true },
         stock: { type: Number, required: true, default: 0 },
+        minStockLevel: { type: Number, required: true, default: 5 },
         image: { type: String, default: "" },
         images: [
             {
@@ -15,6 +16,11 @@ const productSchema = new mongoose.Schema(
             }
         ],
         isFeatured: { type: Boolean, default: false },
+        expiryDate: { type: Date },
+        batchNumber: { type: String },
+        prescriptionRequired: { type: Boolean, default: false },
+        manufacturer: { type: String, default: "" },
+        composition: { type: String, default: "" },
     },  
     { timestamps: true }
 );

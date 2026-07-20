@@ -21,30 +21,38 @@ const orderSchema = new mongoose.Schema(
 
     paymentStatus: {
       type: String,
-      enum: ["pending", "paid", "failed", "cancelled"],
+      enum: ["pending", "paid", "failed", "cancelled", "refunded"],
       default: "pending"
+    },
+
+    paymentMethod: {
+      type: String,
+      enum: ["cash", "card", "upi", "online", "wallet"],
+      default: "cash"
     },
 
     status: {
       type: String,
-      enum: ["pending", "processing", "shipped", "delivered", "completed", "cancelled"],
+      enum: [
+        "pending",
+        "confirmed",
+        "processing",
+        "packed",
+        "shipped",
+        "out_for_delivery",
+        "delivered",
+        "completed",
+        "cancelled",
+        "returned"
+      ],
       default: "pending"
     },
 
-    currency: { type: String, default: "INR" },
-
-    shippingAddress: {
-      street: String,
-      city: String,
-      state: String,
-      zipCode: String,
-      country: { type: String, default: "India" }
-    },
-
-    couponApplied: {
-      code: String,
-      discountPercentage: Number,
-      discountAmount: Number
+    deliveryDetails: {
+      estimatedDelivery: { type: Date },
+      actualDelivery: { type: Date },
+      deliveryPartner: { type: String },
+      trackingNumber: { type: String }
     },
 
     customerName: { type: String },

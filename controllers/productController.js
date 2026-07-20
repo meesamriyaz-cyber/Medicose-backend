@@ -172,6 +172,12 @@ export const addProduct = async (req, res) => {
       price: parseFloat(price),
       category,
       stock: stock || 0,
+      minStockLevel: req.body.minStockLevel || 5,
+      expiryDate: req.body.expiryDate || undefined,
+      batchNumber: req.body.batchNumber || "",
+      prescriptionRequired: req.body.prescriptionRequired || false,
+      manufacturer: req.body.manufacturer || "",
+      composition: req.body.composition || "",
       image: primaryImage,
       images: uploadedImages,
     });
@@ -387,6 +393,12 @@ export const updateProduct = async (req, res) => {
     if (price !== undefined) product.price = parseFloat(price);
     if (category !== undefined) product.category = category;
     if (stock !== undefined) product.stock = parseInt(stock, 10);
+    if (req.body.minStockLevel !== undefined) product.minStockLevel = parseInt(req.body.minStockLevel, 10);
+    if (req.body.expiryDate !== undefined) product.expiryDate = req.body.expiryDate || undefined;
+    if (req.body.batchNumber !== undefined) product.batchNumber = req.body.batchNumber;
+    if (req.body.prescriptionRequired !== undefined) product.prescriptionRequired = req.body.prescriptionRequired;
+    if (req.body.manufacturer !== undefined) product.manufacturer = req.body.manufacturer;
+    if (req.body.composition !== undefined) product.composition = req.body.composition;
     if (uploadedImages.length > 0) {
       product.image = uploadedImages.find((img) => img.isPrimary)?.url || uploadedImages[0]?.url || product.image;
     } else if (imageData && imageData !== product.image) {

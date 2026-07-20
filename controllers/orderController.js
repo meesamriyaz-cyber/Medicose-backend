@@ -148,8 +148,8 @@ export const downloadInvoiceAdmin = async (req, res) => {
 export const updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
-    const validStatuses = ["processing", "delivered", "cancelled"];
+    const { status, paymentMethod, deliveryDetails } = req.body;
+    const validStatuses = ["pending", "confirmed", "processing", "packed", "shipped", "out_for_delivery", "delivered", "completed", "cancelled", "returned"];
 
     if (!validStatuses.includes(status)) {
       return res
@@ -166,8 +166,13 @@ export const updateOrderStatus = async (req, res) => {
 
     const previousStatus = currentOrder.status;
 
+    // Build update object
+    const updateData = { status };
+    if (paymentMethod) updateData.paymentMethod = paymentMethod;
+    if (deliveryDetails) updateData.deliveryDetails = { ...currentOrder.deliveryDetails, ...deliveryDetails };
+
     // Update the order status
-    const order = await Order.findByIdAndUpdate(id, { status }, { new: true });
+    const order = await Order.findByIdAndUpdate(id, updateData, { new: true });
     if (!order)
       return res
         .status(404)
@@ -194,6 +199,13 @@ export const updateOrderStatus = async (req, res) => {
           );
         }
       }
+    }
+
+    // If status changed to delivered, set actual delivery date
+    if (status === "delivered" && previousStatus !== "delivered") {
+      order.deliveryDetails = order.deliveryDetails || {};
+      order.deliveryDetails.actualDelivery = new Date();
+      await order.save();
     }
 
     res.json({ success: true, order });

@@ -138,6 +138,16 @@ export const createDirectSale = async (req, res) => {
       }
     }
 
+    // Check low stock alerts after sale
+    for (const item of validatedItems) {
+      try {
+        const { checkLowStock } = await import("../controllers/alertController.js");
+        await checkLowStock(item.product);
+      } catch (err) {
+        // Ignore alert errors
+      }
+    }
+
     // Clear user's cart
     if (userId) {
       await User.findByIdAndUpdate(userId, { $set: { cartItems: [] } });
