@@ -55,6 +55,12 @@ const orderSchema = new mongoose.Schema(
       trackingNumber: { type: String }
     },
 
+    couponApplied: {
+      code: String,
+      discountPercentage: Number,
+      discountAmount: Number
+    },
+
     customerName: { type: String },
     customerPhone: { type: String }
   },

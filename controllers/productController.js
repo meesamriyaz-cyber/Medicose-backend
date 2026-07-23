@@ -106,12 +106,20 @@ export const addProduct = async (req, res) => {
     const { name, description, price, category, image, stock, images } = req.body;
     const imageData = image || images?.[0]?.data;
 
+    const withTimeout = (promise, ms, label) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+        ),
+      ]);
+
     // Validate required fields
-    if (!name || !description || !price || !category || !imageData || !stock) {
+    if (!name || !description || !price || !category || !stock) {
       return res.status(400).json({
         error: "Missing required fields",
         message:
-          "Please provide all required fields: name, description, price, category, image",
+          "Please provide all required fields: name, description, price, category, stock",
       });
     }
 
@@ -132,36 +140,35 @@ export const addProduct = async (req, res) => {
     }
 
     const uploadedImages = [];
-    try {
-      const imagesToUpload = Array.isArray(images) && images.length > 0
-        ? images
-        : [{ data: imageData, isPrimary: true }];
+    
+    // Only upload images if image data is provided
+    if (imageData) {
+      try {
+        const imagesToUpload = Array.isArray(images) && images.length > 0
+          ? images
+          : [{ data: imageData, isPrimary: true }];
 
-      for (let i = 0; i < imagesToUpload.length; i++) {
-        const img = imagesToUpload[i];
-        if (!img?.data) continue;
-        const cloudinaryResponse = await cloudinary.uploader.upload(img.data, {
-          folder: "products",
-        });
-        uploadedImages.push({
-          url: cloudinaryResponse.secure_url,
-          public_id: cloudinaryResponse.public_id,
-          isPrimary: i === 0 || img.isPrimary,
-        });
-      }
-
-      if (uploadedImages.length === 0) {
+        for (let i = 0; i < imagesToUpload.length; i++) {
+          const img = imagesToUpload[i];
+          if (!img?.data) continue;
+          const cloudinaryResponse = await withTimeout(
+            cloudinary.uploader.upload(img.data, { folder: "products" }),
+            120000,
+            "Image upload"
+          );
+          uploadedImages.push({
+            url: cloudinaryResponse.secure_url,
+            public_id: cloudinaryResponse.public_id,
+            isPrimary: i === 0 || img.isPrimary,
+          });
+        }
+      } catch (cloudinaryError) {
+        console.error("Cloudinary upload error:", cloudinaryError);
         return res.status(400).json({
           error: "Image upload failed",
-          message: "Failed to upload product images",
+          message: cloudinaryError.message || "Failed to upload product images",
         });
       }
-    } catch (cloudinaryError) {
-      console.error("Cloudinary upload error:", cloudinaryError);
-      return res.status(400).json({
-        error: "Image upload failed",
-        message: "Failed to upload product images",
-      });
     }
 
     const primaryImage = uploadedImages.find((img) => img.isPrimary)?.url || uploadedImages[0]?.url || "";
@@ -182,7 +189,7 @@ export const addProduct = async (req, res) => {
       images: uploadedImages,
     });
 
-    await newProduct.save();
+    await withTimeout(newProduct.save(), 30000, "Database save");
 
     res.status(201).json({
       message: "Product added successfully",
@@ -192,7 +199,13 @@ export const addProduct = async (req, res) => {
   } catch (error) {
     console.error("Error adding product:", error);
 
-    // Handle mongoose validation errors
+    if (error.message.includes("timed out")) {
+      return res.status(504).json({
+        error: "Request timeout",
+        message: error.message || "The operation took too long. Please try again.",
+      });
+    }
+
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({
@@ -213,6 +226,14 @@ export const updateProduct = async (req, res) => {
     const { id } = req.params;
     const { name, description, price, category, image, stock, images } = req.body;
     const imageData = image || images?.[0]?.data;
+
+    const withTimeout = (promise, ms, label) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+        ),
+      ]);
 
     // Detect if this is a mobile request (user agent check)
     const userAgent = req.get("User-Agent") || "";
@@ -308,9 +329,10 @@ export const updateProduct = async (req, res) => {
         for (let i = 0; i < images.length; i++) {
           const img = images[i];
           if (!img?.data) continue;
-          const cloudinaryResponse = await cloudinary.uploader.upload(
-            img.data,
-            uploadOptions
+          const cloudinaryResponse = await withTimeout(
+            cloudinary.uploader.upload(img.data, uploadOptions),
+            120000,
+            "Image upload"
           );
           uploadedImages.push({
             url: cloudinaryResponse.secure_url,
@@ -365,9 +387,10 @@ export const updateProduct = async (req, res) => {
           }),
         };
 
-        cloudinaryResponse = await cloudinary.uploader.upload(
-          imageData,
-          uploadOptions
+        cloudinaryResponse = await withTimeout(
+          cloudinary.uploader.upload(imageData, uploadOptions),
+          120000,
+          "Image upload"
         );
         newImageUrl = cloudinaryResponse.secure_url;
 
@@ -406,7 +429,7 @@ export const updateProduct = async (req, res) => {
     }
 
     // Save the updated product
-    await product.save();
+    await withTimeout(product.save(), 30000, "Database save");
 
     res.status(200).json({
       message: `Product updated successfully${isMobile ? " on mobile" : ""}`,
@@ -417,7 +440,13 @@ export const updateProduct = async (req, res) => {
   } catch (error) {
     console.error("Error updating product:", error);
 
-    // Handle mongoose validation errors
+    if (error.message.includes("timed out")) {
+      return res.status(504).json({
+        error: "Request timeout",
+        message: error.message || "The operation took too long. Please try again.",
+      });
+    }
+
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({

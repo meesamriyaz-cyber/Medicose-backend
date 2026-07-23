@@ -74,6 +74,8 @@ export const downloadInvoice = async (req, res) => {
         .json({ success: false, message: "Order not found" });
     }
 
+    console.error("[INVOICE_DEBUG] downloadInvoice orderId:", req.params.id, "couponApplied type:", typeof order.couponApplied, "couponApplied:", JSON.stringify(order.couponApplied));
+
     const pdfBuffer = await generateInvoice(order);
 
     res.set({
@@ -128,7 +130,8 @@ export const downloadInvoiceAdmin = async (req, res) => {
         .json({ success: false, message: "Order not found" });
     }
 
-    // Reuse your existing invoice generator (no req/res inside it)
+    console.error("[INVOICE_DEBUG] downloadInvoiceAdmin orderId:", req.params.id, "couponApplied type:", typeof order.couponApplied, "couponApplied:", JSON.stringify(order.couponApplied));
+
     const pdfBuffer = await generateInvoice(order);
 
     res.set({
@@ -157,7 +160,6 @@ export const updateOrderStatus = async (req, res) => {
         .json({ success: false, message: "Invalid status" });
     }
 
-    // Get the current order to check previous status
     const currentOrder = await Order.findById(id);
     if (!currentOrder)
       return res
@@ -166,19 +168,16 @@ export const updateOrderStatus = async (req, res) => {
 
     const previousStatus = currentOrder.status;
 
-    // Build update object
     const updateData = { status };
     if (paymentMethod) updateData.paymentMethod = paymentMethod;
     if (deliveryDetails) updateData.deliveryDetails = { ...currentOrder.deliveryDetails, ...deliveryDetails };
 
-    // Update the order status
     const order = await Order.findByIdAndUpdate(id, updateData, { new: true });
     if (!order)
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
 
-    // If status changed to cancelled and wasn't cancelled before, restore stock (atomic $inc)
     if (status === "cancelled" && previousStatus !== "cancelled") {
       for (const item of order.orderItems) {
         try {
@@ -201,7 +200,6 @@ export const updateOrderStatus = async (req, res) => {
       }
     }
 
-    // If status changed to delivered, set actual delivery date
     if (status === "delivered" && previousStatus !== "delivered") {
       order.deliveryDetails = order.deliveryDetails || {};
       order.deliveryDetails.actualDelivery = new Date();

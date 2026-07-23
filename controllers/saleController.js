@@ -69,7 +69,9 @@ export const createDirectSale = async (req, res) => {
         }
       } catch (err) {
       }
-    } else if (directDiscountPercentage && directDiscountPercentage > 0) {
+    }
+
+    if (!validatedCoupon && directDiscountPercentage && directDiscountPercentage > 0) {
       const clamped = Math.min(100, Math.max(0, Number(directDiscountPercentage)));
       discountAmount = subtotal * (clamped / 100);
     }
@@ -81,27 +83,31 @@ export const createDirectSale = async (req, res) => {
     }
 
     // Create the order (use server-validated coupon values)
+    const couponAppliedToSave = validatedCoupon
+      ? {
+          code: validatedCoupon.code,
+          discountPercentage: validatedCoupon.discountPercentage,
+          discountAmount,
+        }
+      : directDiscountPercentage
+        ? {
+            code: "DIRECT",
+            discountPercentage: Number(directDiscountPercentage),
+            discountAmount,
+          }
+        : undefined;
+
+    console.error("[SALE_DEBUG] creating order with couponApplied:", JSON.stringify(couponAppliedToSave), "directDiscountPercentage:", directDiscountPercentage);
+
     const order = await Order.create({
       user: userId,
       orderItems: validatedItems,
       totalAmount: computedTotal,
       paymentStatus: "paid",
-      status: "completed",
+      status: "delivered",
       customerName: customerName || "",
       customerPhone: customerPhone || "",
-      couponApplied: validatedCoupon
-        ? {
-            code: validatedCoupon.code,
-            discountPercentage: validatedCoupon.discountPercentage,
-            discountAmount,
-          }
-        : directDiscountPercentage
-          ? {
-              code: "DIRECT",
-              discountPercentage: Number(directDiscountPercentage),
-              discountAmount,
-            }
-          : undefined,
+      couponApplied: couponAppliedToSave,
     });
 
     // Decrease stock for each item (atomic $inc — no race condition)

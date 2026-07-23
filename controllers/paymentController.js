@@ -28,7 +28,7 @@ export const createCheckoutSession = async (req, res) => {
     }
 
     const options = {
-      amount: Math.round(totalAmount), // <= paise, integer
+      amount: Math.round(totalAmount * 100), // convert rupees to paise for Razorpay
       currency: "INR",
       receipt: `receipt_order_${Date.now()}`,
       payment_capture: 1,

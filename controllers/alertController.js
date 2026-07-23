@@ -37,9 +37,14 @@ export const checkExpiryAlerts = async () => {
 
 export const getLowStockProducts = async () => {
   try {
-    return await Product.find({
-      stock: { $lte: "$minStockLevel" }
-    }).sort({ stock: 1 });
+    return await Product.aggregate([
+      {
+        $match: {
+          $expr: { $lte: ["$stock", "$minStockLevel"] }
+        }
+      },
+      { $sort: { stock: 1 } }
+    ]);
   } catch (error) {
     console.error("Error fetching low stock products:", error);
     return [];
