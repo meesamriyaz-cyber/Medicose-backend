@@ -12,6 +12,12 @@ import { generateInvoice } from "../lib/invoiceGenerator.js";
 export const createDirectSale = async (req, res) => {
   try {
     const userId = req.user?._id;
+    const userRole = req.user?.role;
+
+    if (!userId || !userRole || userRole === "customer") {
+      return res.status(403).json({ success: false, message: "Not authorized for direct sale" });
+    }
+
     const { orderItems, couponApplied, customerName, customerPhone, directDiscountPercentage } = req.body;
 
     if (!orderItems || !Array.isArray(orderItems) || orderItems.length === 0) {

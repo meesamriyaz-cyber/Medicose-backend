@@ -39,6 +39,22 @@ export const createCheckoutSession = async (req, res) => {
     };
 
     const order = await instance.orders.create(options);
+
+    const userId = req.user && req.user._id;
+    await PendingPayment.findOneAndUpdate(
+      { razorpayOrderId: order.id },
+      {
+        user: userId || null,
+        razorpayOrderId: order.id,
+        cartSnapshot: cartItems || [],
+        totalAmount,
+        couponApplied: couponCode ? { code: couponCode } : null,
+        status: "pending",
+        expiresAt: new Date(Date.now() + 1000 * 60 * 60), // 1 hour TTL
+      },
+      { upsert: true, new: true }
+    );
+
     res.status(200).json({ success: true, order });
   } catch (error) {
     console.error("Error creating checkout session:", error);

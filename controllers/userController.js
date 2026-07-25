@@ -12,10 +12,14 @@ export const getAllUsers = async (req, res) => {
 
 export const createUser = async (req, res) => {
   try {
-    const { email, password, fullName, role } = req.body;
+    const { email, password, confirmPassword, fullName, role } = req.body;
 
-    if (!email || !password || !fullName) {
-      return res.status(400).json({ error: "Invalid input", message: "Email, password, and full name are required" });
+    if (!email || !password || !confirmPassword || !fullName) {
+      return res.status(400).json({ error: "Invalid input", message: "Email, password, confirm password, and full name are required" });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({ error: "Invalid input", message: "Password and confirm password do not match" });
     }
 
     const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -26,6 +30,7 @@ export const createUser = async (req, res) => {
     const newUser = new User({
       email: email.toLowerCase(),
       password,
+      confirmPassword,
       fullName,
       role: role || "customer",
     });
@@ -54,7 +59,7 @@ export const createUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { email, fullName, role, password } = req.body;
+    const { email, fullName, role, password, confirmPassword } = req.body;
 
     const user = await User.findById(id);
     if (!user) {
@@ -71,7 +76,16 @@ export const updateUser = async (req, res) => {
 
     if (fullName) user.fullName = fullName;
     if (role) user.role = role;
-    if (password) user.password = password;
+    if (password) {
+      if (!confirmPassword) {
+        return res.status(400).json({ error: "Invalid input", message: "Confirm password is required when updating password" });
+      }
+      if (password !== confirmPassword) {
+        return res.status(400).json({ error: "Invalid input", message: "Password and confirm password do not match" });
+      }
+      user.password = password;
+      user.confirmPassword = confirmPassword;
+    }
 
     await user.save();
 
