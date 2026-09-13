@@ -4,13 +4,35 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true });
 dotenv.config({ quiet: true });
 
-const LOCAL_MONGO_URI = "mongodb://localhost:27017/haleem_medicose";
-const CLOUD_MONGO_URI = process.env.HALEEM_MEDICOSE_MONGO_URI || process.env.MONGODB_URI || null;
+const LOCAL_MONGO_URI = "mongodb://127.0.0.1:27017/haleem_medicose";
+const DESKTOP_MONGO_URI =
+  process.env.DESKTOP_MONGO_URI ||
+  "mongodb://127.0.0.1:27018/haleem_medicose";
+const CLOUD_MONGO_URI =
+  process.env.HALEEM_MEDICOSE_MONGO_URI ||
+  process.env.MONGODB_URI ||
+  null;
 
-const connectDB = async (attempt = 1, uri = LOCAL_MONGO_URI) => {
+const isDesktop = process.env.DESKTOP_APP === "true";
+
+const getPrimaryMongoURI = () => {
+  if (isDesktop) return DESKTOP_MONGO_URI;
+  return LOCAL_MONGO_URI;
+};
+
+const getFallbackMongoURI = (uri) => {
+  if (!isDesktop && uri === LOCAL_MONGO_URI && CLOUD_MONGO_URI) {
+    return CLOUD_MONGO_URI;
+  }
+
+  return null;
+};
+
+const connectDB = async (attempt = 1, uri = getPrimaryMongoURI()) => {
   try {
     await mongoose.connect(uri, {
       serverSelectionTimeoutMS: 5000,
@@ -20,10 +42,14 @@ const connectDB = async (attempt = 1, uri = LOCAL_MONGO_URI) => {
       family: 4,
     });
   } catch (error) {
-    console.error(`[DB] Connection failed (attempt ${attempt}):`, error.message);
+    console.error(
+      `[DB] Connection failed (attempt ${attempt}, ${isDesktop ? "desktop" : "standard"} mode):`,
+      error.message
+    );
 
-    if (uri === LOCAL_MONGO_URI && CLOUD_MONGO_URI) {
-      return connectDB(1, CLOUD_MONGO_URI);
+    const fallbackURI = getFallbackMongoURI(uri);
+    if (fallbackURI) {
+      return connectDB(1, fallbackURI);
     }
 
     if (attempt < 3) {
