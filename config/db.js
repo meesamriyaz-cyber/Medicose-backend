@@ -43,10 +43,14 @@ const connectDB = async (attempt = 1, uri = getPrimaryMongoURI()) => {
     });
     console.log("MongoDB connected successfully");
   } catch (error) {
-    console.error(`[DB] Connection failed (attempt ${attempt}):`, error.message);
+    console.error(
+      `[DB] Connection failed (attempt ${attempt}, ${isDesktop ? "desktop" : "standard"} mode):`,
+      error.message
+    );
 
-    if (uri === LOCAL_MONGO_URI && CLOUD_MONGO_URI) {
-      return connectDB(1, CLOUD_MONGO_URI);
+    const fallbackURI = getFallbackMongoURI(uri);
+    if (fallbackURI) {
+      return connectDB(1, fallbackURI);
     }
 
     if (attempt < 3) {
