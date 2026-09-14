@@ -5,20 +5,35 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true });
+dotenv.config({
+  path: path.resolve(__dirname, "../../.env.local"),
+  quiet: true,
+});
 dotenv.config({ quiet: true });
 
-const LOCAL_MONGO_URI = "mongodb://localhost:27017/haleem_medicose";
+const LOCAL_MONGO_URI = "mongodb://127.0.0.1:27017/haleem_medicose";
+const DESKTOP_MONGO_URI =
+  process.env.DESKTOP_MONGO_URI ||
+  "mongodb://127.0.0.1:27018/haleem_medicose";
+
 const MONGO_URI =
-  process.env.HALEEM_MEDICOSE_MONGO_URI ||
-  process.env.MONGODB_URI ||
-  LOCAL_MONGO_URI;
+  process.env.DESKTOP_APP === "true"
+    ? DESKTOP_MONGO_URI
+    : process.env.HALEEM_MEDICOSE_MONGO_URI ||
+      process.env.MONGODB_URI ||
+      LOCAL_MONGO_URI;
 
 const INDEX_NAME = "userID_1";
 const COLLECTION_NAME = "coupons";
 
 async function migrate() {
   try {
+    console.log(
+      `[migration] Connecting in ${
+        process.env.DESKTOP_APP === "true" ? "desktop" : "standard"
+      } mode.`
+    );
+
     await mongoose.connect(MONGO_URI, {
       serverSelectionTimeoutMS: 10000,
       connectTimeoutMS: 10000,
@@ -30,12 +45,16 @@ async function migrate() {
     const hasLegacyIndex = indexes.some((index) => index.name === INDEX_NAME);
 
     if (!hasLegacyIndex) {
-      console.log(`[migration] Legacy index "${INDEX_NAME}" does not exist. No changes required.`);
+      console.log(
+        `[migration] Legacy index "${INDEX_NAME}" does not exist. No changes required.`
+      );
       return;
     }
 
     await collection.dropIndex(INDEX_NAME);
-    console.log(`[migration] Dropped legacy index "${INDEX_NAME}" from "${COLLECTION_NAME}".`);
+    console.log(
+      `[migration] Dropped legacy index "${INDEX_NAME}" from "${COLLECTION_NAME}".`
+    );
   } finally {
     await mongoose.disconnect();
   }
