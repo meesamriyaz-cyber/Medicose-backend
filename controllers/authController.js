@@ -1,10 +1,7 @@
-import express from "express";
 import User from "../models/User.js";
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import redis from "../lib/redis.js";
-import { set } from "mongoose";
 dotenv.config({ quiet: true });
 
 const getAccessToken = (req) => {
@@ -75,7 +72,7 @@ const setCookie = (res, accessToken, refreshToken) => {
 };
 export const signup = async (req, res) => {
   try {
-    const { email, password, confirmPassword, fullName, role } = req.body;
+    const { email, password, confirmPassword, fullName } = req.body;
     if (!email || !password || !confirmPassword || !fullName) {
       return res
         .status(400)
@@ -100,7 +97,7 @@ export const signup = async (req, res) => {
       password,
       confirmPassword,
       fullName,
-      role,
+      role: "customer",
     });
     await newUser.save();
     const { access_token, refresh_token } = await generateToken(newUser._id);
@@ -193,8 +190,13 @@ export const refreshToken = async (req, res) => {
       .status(200)
       .json({ message: "Token refreshed", access_token, refresh_token });
   } catch (error) {
-    console.error("Error during token refresh:", error);
-    res.status(500).send("Server error");
+    console.error("Error during token refresh:", error.message);
+
+    if (error.name === "TokenExpiredError" || error.name === "JsonWebTokenError") {
+      return res.status(401).json({ message: "Invalid or expired refresh token" });
+    }
+
+    res.status(500).json({ message: "Server error" });
   }
 };
 
