@@ -8,6 +8,14 @@ node_modules/
 frontend/.env*
 backend/.env*
 
+# Local TLS certificates and private keys
+*.pem
+*.key
+*.crt
+*.cer
+*.pfx
+*.p12
+
 # Build
 dist/
 build/
