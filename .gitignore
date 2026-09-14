@@ -2,9 +2,10 @@
 node_modules/
 */node_modules/
 
-# ENV files
+# Environment files (never commit real secrets)
 .env
 .env.*
+!.env.example
 frontend/.env*
 backend/.env*
 
