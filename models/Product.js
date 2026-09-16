@@ -24,5 +24,24 @@ const productSchema = new mongoose.Schema(
     },  
     { timestamps: true }
 );
+
+// Keep the product image invariant centralized: when a gallery exists,
+// exactly one image is primary and the legacy `image` field points to it.
+productSchema.pre("validate", function (next) {
+    if (Array.isArray(this.images) && this.images.length > 0) {
+        let primaryIndex = this.images.findIndex((image) => image.isPrimary === true);
+        if (primaryIndex < 0) primaryIndex = 0;
+
+        this.images = this.images.map((image, index) => ({
+            ...image.toObject?.() ?? image,
+            isPrimary: index === primaryIndex,
+        }));
+
+        this.image = this.images[primaryIndex]?.url || this.images[0]?.url || "";
+    }
+
+    next();
+});
+
 const Product = mongoose.model("Product", productSchema);
 export default Product;
