@@ -154,20 +154,12 @@ const mergeUpdatedImages = (existingImages, requestedImages, uploadedImages) => 
   const existingByUrl = new Map(
     existingImages.filter((image) => image?.url).map((image) => [image.url, image])
   );
-  const uploadedByRequestIndex = new Map();
+  const merged = [];
   let uploadIndex = 0;
 
-  for (const requestedImage of requestedImages) {
+  requestedImages.forEach((requestedImage) => {
     if (isImageData(requestedImage?.data)) {
-      uploadedByRequestIndex.set(requestedImages.indexOf(requestedImage), uploadedImages[uploadIndex]);
-      uploadIndex += 1;
-    }
-  }
-
-  const merged = [];
-  requestedImages.forEach((requestedImage, index) => {
-    if (isImageData(requestedImage?.data)) {
-      const uploaded = uploadedByRequestIndex.get(index);
+      const uploaded = uploadedImages[uploadIndex++];
       if (uploaded) merged.push(uploaded);
       return;
     }
@@ -188,20 +180,27 @@ const mergeUpdatedImages = (existingImages, requestedImages, uploadedImages) => 
 
 const setPrimaryImage = (images, requestedImages) => {
   if (!images.length) return [];
-  const primaryRequested = requestedImages.findIndex(
+  const primaryRequested = requestedImages.find(
     (image) => image?.isPrimary === true
   );
-  const primaryUrl =
-    primaryRequested >= 0 ? requestedImages[primaryRequested]?.url : null;
-  const primaryDataIndex =
-    primaryRequested >= 0 && isImageData(requestedImages[primaryRequested]?.data)
-      ? requestedImages.slice(0, primaryRequested + 1).filter((image) => isImageData(image?.data)).length - 1
-      : -1;
+
+  if (primaryRequested?.url) {
+    return images.map((image) => ({
+      ...image,
+      isPrimary: image.url === primaryRequested.url,
+    }));
+  }
+
+  if (isImageData(primaryRequested?.data)) {
+    return images.map((image, index) => ({
+      ...image,
+      isPrimary: index === 0,
+    }));
+  }
 
   return images.map((image, index) => ({
     ...image,
-    isPrimary:
-      primaryUrl ? image.url === primaryUrl : primaryDataIndex >= 0 ? index === primaryDataIndex : index === 0,
+    isPrimary: index === 0,
   }));
 };
 
@@ -333,6 +332,7 @@ export const updateProductWithStableImages = async (req, res) => {
     const existingImages = getExistingImages(product);
     const existingPublicIds = imageRequest ? getExistingPublicIds(product) : [];
     let uploadedImages = [];
+    let updatedImages = null;
 
     if (imageRequest) {
       try {
@@ -346,15 +346,48 @@ export const updateProductWithStableImages = async (req, res) => {
         });
       }
 
-      const mergedImages = mergeUpdatedImages(existingImages, imageRequest, uploadedImages);
-      if (!mergedImages.length) {
-        return res.status(400).json({
-          error: "Image update failed",
-          message: "No valid existing or new product images were provided.",
-        });
+      // The current Edit Product UI sends a single `image` field when replacing
+      // the primary image. Preserve all secondary images in that case.
+      const isSingleImageReplacement = !Array.isArray(images) && isImageData(image);
+
+      if (isSingleImageReplacement) {
+        if (!uploadedImages.length) {
+          return res.status(400).json({
+            error: "Image update failed",
+            message: "The replacement product image could not be uploaded.",
+          });
+        }
+
+        const replacement = uploadedImages[0];
+        updatedImages = existingImages.length
+          ? existingImages.map((existingImage) => ({
+              ...existingImage,
+              isPrimary: existingImage.isPrimary === true,
+            }))
+          : [];
+
+        const primaryIndex = updatedImages.findIndex((item) => item.isPrimary);
+        if (primaryIndex >= 0) {
+          updatedImages[primaryIndex] = {
+            ...replacement,
+            isPrimary: true,
+          };
+        } else {
+          updatedImages.unshift({
+            ...replacement,
+            isPrimary: true,
+          });
+        }
+      } else {
+        const mergedImages = mergeUpdatedImages(existingImages, imageRequest, uploadedImages);
+        if (!mergedImages.length) {
+          return res.status(400).json({
+            error: "Image update failed",
+            message: "No valid existing or new product images were provided.",
+          });
+        }
+        updatedImages = setPrimaryImage(mergedImages, imageRequest);
       }
-      const normalizedMergedImages = setPrimaryImage(mergedImages, imageRequest);
-      req._mergedProductImages = normalizedMergedImages;
     }
 
     const originalState = {
@@ -374,9 +407,9 @@ export const updateProductWithStableImages = async (req, res) => {
     if (req.body.manufacturer !== undefined) product.manufacturer = req.body.manufacturer;
     if (req.body.composition !== undefined) product.composition = req.body.composition;
 
-    if (req._mergedProductImages) {
-      product.images = req._mergedProductImages;
-      product.image = req._mergedProductImages.find((item) => item.isPrimary)?.url || req._mergedProductImages[0].url;
+    if (updatedImages) {
+      product.images = updatedImages;
+      product.image = updatedImages.find((item) => item.isPrimary)?.url || updatedImages[0]?.url || "";
     }
 
     try {
@@ -390,7 +423,7 @@ export const updateProductWithStableImages = async (req, res) => {
 
     if (uploadedImages.length > 0) {
       const retainedPublicIds = new Set(
-        (req._mergedProductImages || []).map((imageItem) => imageItem.public_id).filter(Boolean)
+        (updatedImages || []).map((imageItem) => imageItem.public_id).filter(Boolean)
       );
       const replacedPublicIds = existingPublicIds.filter((publicId) => !retainedPublicIds.has(publicId));
       if (replacedPublicIds.length > 0) {
