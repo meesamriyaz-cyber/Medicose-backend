@@ -19,7 +19,7 @@ const withTimeout = (promise, ms, label) => {
 
 const isImageData = (value) =>
   typeof value === "string" &&
-  /^data:image\/(jpeg|jpg|png|webp|gif);base64,/i.test(value);
+  /^data:image\/(jpeg|jpg|png|webp|gif|avif);base64,/i.test(value);
 
 const validateImageData = (value) => {
   if (!isImageData(value)) {
