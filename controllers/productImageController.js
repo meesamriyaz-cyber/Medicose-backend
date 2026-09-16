@@ -107,19 +107,32 @@ const extractPublicIdFromUrl = (url) => {
   }
 };
 
-const getExistingPublicIds = (product) => {
-  const ids = new Set();
-  if (Array.isArray(product.images)) {
-    for (const image of product.images) {
-      if (image?.public_id) ids.add(image.public_id);
-    }
+const getExistingImages = (product) => {
+  if (Array.isArray(product.images) && product.images.length > 0) {
+    return product.images.map((image) => ({
+      url: image.url,
+      public_id: image.public_id,
+      isPrimary: image.isPrimary === true,
+    }));
   }
-  if (!ids.size && product.image) {
-    const publicId = extractPublicIdFromUrl(product.image);
-    if (publicId) ids.add(publicId);
+
+  if (product.image) {
+    return [
+      {
+        url: product.image,
+        public_id: extractPublicIdFromUrl(product.image) || "",
+        isPrimary: true,
+      },
+    ];
   }
-  return [...ids];
+
+  return [];
 };
+
+const getExistingPublicIds = (product) =>
+  getExistingImages(product)
+    .map((image) => image.public_id)
+    .filter(Boolean);
 
 const deleteExistingCloudinaryImages = async (publicIds) => {
   for (const publicId of publicIds) {
@@ -135,6 +148,61 @@ const getImageRequest = (body) => {
   if (Array.isArray(body.images) && body.images.length > 0) return body.images;
   if (isImageData(body.image)) return [{ data: body.image, isPrimary: true }];
   return null;
+};
+
+const mergeUpdatedImages = (existingImages, requestedImages, uploadedImages) => {
+  const existingByUrl = new Map(
+    existingImages.filter((image) => image?.url).map((image) => [image.url, image])
+  );
+  const uploadedByRequestIndex = new Map();
+  let uploadIndex = 0;
+
+  for (const requestedImage of requestedImages) {
+    if (isImageData(requestedImage?.data)) {
+      uploadedByRequestIndex.set(requestedImages.indexOf(requestedImage), uploadedImages[uploadIndex]);
+      uploadIndex += 1;
+    }
+  }
+
+  const merged = [];
+  requestedImages.forEach((requestedImage, index) => {
+    if (isImageData(requestedImage?.data)) {
+      const uploaded = uploadedByRequestIndex.get(index);
+      if (uploaded) merged.push(uploaded);
+      return;
+    }
+
+    if (requestedImage?.url) {
+      const existing = existingByUrl.get(requestedImage.url);
+      if (existing) {
+        merged.push({
+          ...existing,
+          isPrimary: requestedImage.isPrimary === true,
+        });
+      }
+    }
+  });
+
+  return merged;
+};
+
+const setPrimaryImage = (images, requestedImages) => {
+  if (!images.length) return [];
+  const primaryRequested = requestedImages.findIndex(
+    (image) => image?.isPrimary === true
+  );
+  const primaryUrl =
+    primaryRequested >= 0 ? requestedImages[primaryRequested]?.url : null;
+  const primaryDataIndex =
+    primaryRequested >= 0 && isImageData(requestedImages[primaryRequested]?.data)
+      ? requestedImages.slice(0, primaryRequested + 1).filter((image) => isImageData(image?.data)).length - 1
+      : -1;
+
+  return images.map((image, index) => ({
+    ...image,
+    isPrimary:
+      primaryUrl ? image.url === primaryUrl : primaryDataIndex >= 0 ? index === primaryDataIndex : index === 0,
+  }));
 };
 
 const validateCommonFields = ({ name, description, price, category, stock }) => {
@@ -262,12 +330,14 @@ export const updateProductWithStableImages = async (req, res) => {
     }
 
     const imageRequest = getImageRequest({ image, images });
+    const existingImages = getExistingImages(product);
     const existingPublicIds = imageRequest ? getExistingPublicIds(product) : [];
     let uploadedImages = [];
 
     if (imageRequest) {
       try {
-        uploadedImages = await uploadImages(imageRequest);
+        const newImageInputs = imageRequest.filter((imageItem) => isImageData(imageItem?.data));
+        uploadedImages = newImageInputs.length ? await uploadImages(newImageInputs) : [];
       } catch (error) {
         console.error("Product image upload error:", error);
         return res.status(400).json({
@@ -275,15 +345,22 @@ export const updateProductWithStableImages = async (req, res) => {
           message: error.message || "Failed to upload product images",
         });
       }
-      if (!uploadedImages.length) {
+
+      const mergedImages = mergeUpdatedImages(existingImages, imageRequest, uploadedImages);
+      if (!mergedImages.length) {
         return res.status(400).json({
-          error: "Image upload failed",
-          message: "At least one valid image is required when updating images.",
+          error: "Image update failed",
+          message: "No valid existing or new product images were provided.",
         });
       }
+      const normalizedMergedImages = setPrimaryImage(mergedImages, imageRequest);
+      req._mergedProductImages = normalizedMergedImages;
     }
 
-    const originalState = { image: product.image, images: product.images };
+    const originalState = {
+      image: product.image,
+      images: product.images,
+    };
 
     if (name !== undefined) product.name = name.trim();
     if (description !== undefined) product.description = description.trim();
@@ -297,9 +374,9 @@ export const updateProductWithStableImages = async (req, res) => {
     if (req.body.manufacturer !== undefined) product.manufacturer = req.body.manufacturer;
     if (req.body.composition !== undefined) product.composition = req.body.composition;
 
-    if (uploadedImages.length > 0) {
-      product.images = uploadedImages;
-      product.image = uploadedImages.find((item) => item.isPrimary)?.url || uploadedImages[0].url;
+    if (req._mergedProductImages) {
+      product.images = req._mergedProductImages;
+      product.image = req._mergedProductImages.find((item) => item.isPrimary)?.url || req._mergedProductImages[0].url;
     }
 
     try {
@@ -311,8 +388,14 @@ export const updateProductWithStableImages = async (req, res) => {
       throw error;
     }
 
-    if (uploadedImages.length > 0 && existingPublicIds.length > 0) {
-      await deleteExistingCloudinaryImages(existingPublicIds);
+    if (uploadedImages.length > 0) {
+      const retainedPublicIds = new Set(
+        (req._mergedProductImages || []).map((imageItem) => imageItem.public_id).filter(Boolean)
+      );
+      const replacedPublicIds = existingPublicIds.filter((publicId) => !retainedPublicIds.has(publicId));
+      if (replacedPublicIds.length > 0) {
+        await deleteExistingCloudinaryImages(replacedPublicIds);
+      }
     }
 
     const userAgent = req.get("User-Agent") || "";
