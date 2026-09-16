@@ -33,7 +33,7 @@ productSchema.pre("validate", function (next) {
         if (primaryIndex < 0) primaryIndex = 0;
 
         this.images = this.images.map((image, index) => ({
-            ...image.toObject?.() ?? image,
+            ...(image.toObject?.() ?? image),
             isPrimary: index === primaryIndex,
         }));
 
