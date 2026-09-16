@@ -2,8 +2,6 @@ import express from "express";
 import {
   getAllProducts,
   getProductById,
-  addProduct,
-  updateProduct,
   deleteProduct,
   setFeaturedProduct,
   getProductsByCategory,
