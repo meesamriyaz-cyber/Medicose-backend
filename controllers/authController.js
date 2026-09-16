@@ -51,6 +51,7 @@ const storeRefreshToken = async (userID, refreshToken) => {
     await redis.set(userID.toString(), refreshToken, "EX", 7 * 24 * 60 * 60); // 7 days
   } catch (error) {
     console.error("Error storing refresh token in Redis:", error);
+    throw new Error("Unable to create authenticated session.");
   }
 };
 
