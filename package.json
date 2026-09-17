@@ -28,10 +28,11 @@
     "multer": "^2.0.2",
     "mongoose": "^8.18.2",
     "nodemailer": "^6.10.1",
-    "nodemon": "^3.1.10",
     "pdf-lib": "^1.17.1",
-    "pdfkit": "^0.17.2",
+    "pdfkit": "^0.17.0",
     "razorpay": "^2.9.6"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
 }
