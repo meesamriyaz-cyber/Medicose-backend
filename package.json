@@ -4,7 +4,8 @@
   "main": "backend/server.js",
   "scripts": {
     "dev": "nodemon server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "seed:demo-admin": "node scripts/seedDemoAdmin.js"
   },
   "keywords": [],
   "author": "",
@@ -24,14 +25,13 @@
     "jsonwebtoken": "^9.0.2",
     "mailtrap": "^4.3.0",
     "mongodb": "^7.5.0",
-    "mongoose": "^8.18.2",
     "multer": "^2.0.2",
+    "mongoose": "^8.18.2",
     "nodemailer": "^6.10.1",
+    "nodemon": "^3.1.10",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.17.2",
     "razorpay": "^2.9.6"
   },
-  "devDependencies": {
-    "nodemon": "^3.1.10"
-  }
+  "devDependencies": {}
 }
